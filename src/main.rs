@@ -28,7 +28,7 @@ fn main() {
     // Image creation
     let height = 1024;
     let width = 1024;
-    let image = create_image(memory_allocator, height, width);
+    let image = create_image(memory_allocator.clone(), height, width);
 
     // Create vertices of single triangle
     let vertex1 = MyVertex { position: [0.0, -0.5] };
@@ -91,7 +91,7 @@ fn create_image(
     width: u32,
 ) -> Arc<Image> {
     let image = Image::new(
-        allocator.clone(),
+        allocator,
         ImageCreateInfo {
             image_type: ImageType::Dim2d,
             format: Format::R8G8B8A8_UNORM,
