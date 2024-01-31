@@ -7,7 +7,7 @@ use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFla
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::format::Format;
-use vulkano::buffer::BufferContents;
+use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage};
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 
 #[derive(BufferContents, Vertex)]
@@ -34,6 +34,21 @@ fn main() {
     let vertex1 = MyVertex { position: [0.0, -0.5] };
     let vertex2 = MyVertex { position: [0.5, 0.5] };
     let vertex3 = MyVertex { position: [-0.5, 0.5] };
+
+    // Create vertex buffer and put the triangle vertices in it
+    let vertex_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        vec![vertex1, vertex2, vertex3],
+    ).expect("Should have been able to create vertex buffer");
 }
 
 fn setup_instance() -> Arc<Instance> {
