@@ -4,7 +4,9 @@ use vulkano::VulkanLibrary;
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags};
-use vulkano::memory::allocator::StandardMemoryAllocator;
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
+use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::format::Format;
 
 fn main() {
     // Setup
@@ -13,6 +15,11 @@ fn main() {
     let (device, queues) = get_logical_device(physical_device);
     let queue = get_queue(queues);
     let memory_allocator = create_memory_allocator(device);
+
+    // Image creation
+    let height = 1024;
+    let width = 1024;
+    let image = create_image(memory_allocator, height, width);
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -62,4 +69,26 @@ fn create_memory_allocator(device: Arc<Device>) -> Arc<StandardMemoryAllocator> 
         StandardMemoryAllocator::new_default(device.clone())
     );
     allocator
+}
+
+fn create_image(
+    allocator: Arc<StandardMemoryAllocator>,
+    height: u32,
+    width: u32,
+) -> Arc<Image> {
+    let image = Image::new(
+        allocator.clone(),
+        ImageCreateInfo {
+            image_type: ImageType::Dim2d,
+            format: Format::R8G8B8A8_UNORM,
+            extent: [height, width, 1],
+            usage: ImageUsage::TRANSFER_DST | ImageUsage::TRANSFER_SRC,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+            ..Default::default()
+        },
+    ).expect("Should've been able to create a single 2D image");
+    image
 }
