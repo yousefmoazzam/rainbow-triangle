@@ -7,6 +7,15 @@ use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFla
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::format::Format;
+use vulkano::buffer::BufferContents;
+use vulkano::pipeline::graphics::vertex_input::Vertex;
+
+#[derive(BufferContents, Vertex)]
+#[repr(C)]
+struct MyVertex {
+    #[format(R32G32_SFLOAT)]
+    position: [f32; 2],
+}
 
 fn main() {
     // Setup
@@ -20,6 +29,11 @@ fn main() {
     let height = 1024;
     let width = 1024;
     let image = create_image(memory_allocator, height, width);
+
+    // Create vertices of single triangle
+    let vertex1 = MyVertex { position: [0.0, -0.5] };
+    let vertex2 = MyVertex { position: [0.5, 0.5] };
+    let vertex3 = MyVertex { position: [-0.5, 0.5] };
 }
 
 fn setup_instance() -> Arc<Instance> {
