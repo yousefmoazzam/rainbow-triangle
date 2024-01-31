@@ -23,7 +23,7 @@ fn main() {
     let physical_device = get_physical_device(instance);
     let (device, queues) = get_logical_device(physical_device);
     let queue = get_queue(queues);
-    let memory_allocator = create_memory_allocator(device);
+    let memory_allocator = create_memory_allocator(device.clone());
 
     // Image creation
     let height = 1024;
@@ -95,7 +95,7 @@ fn get_queue(mut queues: impl ExactSizeIterator<Item = Arc<Queue>>) -> Arc<Queue
 
 fn create_memory_allocator(device: Arc<Device>) -> Arc<StandardMemoryAllocator> {
     let allocator = Arc::new(
-        StandardMemoryAllocator::new_default(device.clone())
+        StandardMemoryAllocator::new_default(device)
     );
     allocator
 }
