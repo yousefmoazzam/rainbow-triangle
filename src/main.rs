@@ -4,12 +4,15 @@ use vulkano::VulkanLibrary;
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags};
+use vulkano::memory::allocator::StandardMemoryAllocator;
 
 fn main() {
     // Setup
     let instance = setup_instance();
     let physical_device = get_physical_device(instance);
     let (device, queues) = get_logical_device(physical_device);
+    let queue = get_queue(queues);
+    let memory_allocator = create_memory_allocator(device);
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -47,4 +50,16 @@ fn get_logical_device(
         },
     ).expect("Unable to create logical device from physical device");
     (device, queues)
+}
+
+fn get_queue(mut queues: impl ExactSizeIterator<Item = Arc<Queue>>) -> Arc<Queue> {
+    let queue = queues.next().expect("Should have had 1 queue in the iterator of queues");
+    queue
+}
+
+fn create_memory_allocator(device: Arc<Device>) -> Arc<StandardMemoryAllocator> {
+    let allocator = Arc::new(
+        StandardMemoryAllocator::new_default(device.clone())
+    );
+    allocator
 }
