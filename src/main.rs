@@ -11,6 +11,10 @@ use vulkano::format::Format;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage};
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
+use vulkano::command_buffer::allocator::{
+    StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
+};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -57,6 +61,19 @@ fn main() {
 
     // Create framebuffer that contains the single image
     let framebuffer = wrap_image_in_framebuffer(image.clone(), render_pass.clone());
+
+    // Create command buffer allocator
+    let command_buffer_allocator = StandardCommandBufferAllocator::new(
+        device.clone(),
+        StandardCommandBufferAllocatorCreateInfo::default(),
+    );
+
+    // Create command buffer builder
+    let builder = AutoCommandBufferBuilder::primary(
+        &command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    ).expect("Should have been able to create command buffer builder");
 }
 
 fn setup_instance() -> Arc<Instance> {
