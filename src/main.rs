@@ -6,10 +6,11 @@ use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::image::view::ImageView;
 use vulkano::format::Format;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage};
 use vulkano::pipeline::graphics::vertex_input::Vertex;
-use vulkano::render_pass::RenderPass;
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -53,6 +54,9 @@ fn main() {
 
     // Create render pass object configured to clear a single image
     let render_pass = create_render_pass(device.clone());
+
+    // Create framebuffer that contains the single image
+    let framebuffer = wrap_image_in_framebuffer(image.clone(), render_pass.clone());
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -143,4 +147,20 @@ fn create_render_pass(device: Arc<Device>) -> Arc<RenderPass> {
         },
     ).expect("Should have been able to create render pass");
     render_pass
+}
+
+fn wrap_image_in_framebuffer(
+    image: Arc<Image>,
+    render_pass: Arc<RenderPass>,
+) -> Arc<Framebuffer> {
+    let view = ImageView::new_default(image)
+        .expect("Should have been able to create an image view");
+    let framebuffer = Framebuffer::new(
+        render_pass,
+        FramebufferCreateInfo {
+            attachments: vec![view],
+            ..Default::default()
+        },
+    ).expect("Should have been able to create framebuffer");
+    framebuffer
 }
