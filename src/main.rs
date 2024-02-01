@@ -9,6 +9,7 @@ use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::format::Format;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage};
 use vulkano::pipeline::graphics::vertex_input::Vertex;
+use vulkano::render_pass::RenderPass;
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -49,6 +50,9 @@ fn main() {
         },
         vec![vertex1, vertex2, vertex3],
     ).expect("Should have been able to create vertex buffer");
+
+    // Create render pass object configured to clear a single image
+    let render_pass = create_render_pass(device.clone());
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -120,4 +124,23 @@ fn create_image(
         },
     ).expect("Should've been able to create a single 2D image");
     image
+}
+
+fn create_render_pass(device: Arc<Device>) -> Arc<RenderPass> {
+    let render_pass = vulkano::single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            color: {
+                format: Format::R8G8B8A8_UNORM,
+                samples: 1,
+                load_op: Clear,
+                store_op: Store,
+            },
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {},
+        },
+    ).expect("Should have been able to create render pass");
+    render_pass
 }
