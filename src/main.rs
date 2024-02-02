@@ -14,7 +14,10 @@ use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
 use vulkano::command_buffer::allocator::{
     StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
 };
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
+    RenderPassBeginInfo, SubpassBeginInfo, SubpassContents, SubpassEndInfo,
+};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -69,11 +72,15 @@ fn main() {
     );
 
     // Create command buffer builder
-    let builder = AutoCommandBufferBuilder::primary(
+    let mut builder = AutoCommandBufferBuilder::primary(
         &command_buffer_allocator,
         queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     ).expect("Should have been able to create command buffer builder");
+
+    // Record commands to builder
+    let colour: [f32; 4] = [0.80, 0.97, 1.00, 1.00];
+    configure_command_buffer_builder(&mut builder, colour, framebuffer);
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -180,4 +187,25 @@ fn wrap_image_in_framebuffer(
         },
     ).expect("Should have been able to create framebuffer");
     framebuffer
+}
+
+fn configure_command_buffer_builder(
+    builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    colour: [f32; 4],
+    framebuffer: Arc<Framebuffer>,
+) {
+    builder
+        .begin_render_pass(
+            RenderPassBeginInfo {
+                clear_values: vec![Some(colour.into())],
+                ..RenderPassBeginInfo::framebuffer(framebuffer)
+            },
+            SubpassBeginInfo {
+                contents: SubpassContents::Inline,
+                ..Default::default()
+            },
+        )
+        .expect("Should be able to configure image clearing in render pass")
+        .end_render_pass(SubpassEndInfo::default())
+        .expect("Should be able to configure end of render pass");
 }
