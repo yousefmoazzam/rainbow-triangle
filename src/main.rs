@@ -85,6 +85,8 @@ fn main() {
     // Create shader module objects
     let vertex_shader = vertex_shaders::load(device.clone())
         .expect("Should be able to create shader module for vertex shader");
+    let fragment_shader = fragment_shaders::load(device.clone())
+        .expect("Should be able to create shader module for fragment shader");
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -224,6 +226,21 @@ mod vertex_shaders {
 
             void main() {
                 gl_Position = vec4(position, 0.0, 1.0);
+            }
+        ",
+    }
+}
+
+mod fragment_shaders {
+    vulkano_shaders::shader!{
+        ty: "fragment",
+        src: r"
+            #version 460
+
+            layout(location = 0) out vec4 f_color;
+
+            void main() {
+                f_color = vec4(0.0, 0.0, 1.0, 1.0);
             }
         ",
     }
