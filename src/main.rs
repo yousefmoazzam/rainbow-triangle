@@ -81,6 +81,10 @@ fn main() {
     // Record commands to builder
     let colour: [f32; 4] = [0.80, 0.97, 1.00, 1.00];
     configure_command_buffer_builder(&mut builder, colour, framebuffer);
+
+    // Create shader module objects
+    let vertex_shader = vertex_shaders::load(device.clone())
+        .expect("Should be able to create shader module for vertex shader");
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -208,4 +212,19 @@ fn configure_command_buffer_builder(
         .expect("Should be able to configure image clearing in render pass")
         .end_render_pass(SubpassEndInfo::default())
         .expect("Should be able to configure end of render pass");
+}
+
+mod vertex_shaders {
+    vulkano_shaders::shader!{
+        ty: "vertex",
+        src: r"
+            #version 460
+
+            layout(location = 0) in vec2 position;
+
+            void main() {
+                gl_Position = vec4(position, 0.0, 1.0);
+            }
+        ",
+    }
 }
