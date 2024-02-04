@@ -29,6 +29,8 @@ use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
 use vulkano::sync::{self, GpuFuture};
 
+use image::{ImageBuffer, Rgba};
+
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
 struct MyVertex {
@@ -150,6 +152,13 @@ fn main() {
 
     // Wait for "fence"/signal from GPU and block CPU until it's received
     future.wait(None).expect("Should be able to wait for 'fence' from GPU");
+
+    // Save image in png file
+    let buffer_content = host_buffer.read()
+        .expect("Should be able to read contents of host buffer");
+    let drawn_image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, &buffer_content[..])
+        .expect("Should be able to create an image object from the host buffer");
+    drawn_image.save("triangle.png").expect("Unable to save png image");
 }
 
 fn setup_instance() -> Arc<Instance> {
