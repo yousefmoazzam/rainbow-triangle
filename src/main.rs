@@ -27,6 +27,7 @@ use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
+use vulkano::sync::{self, GpuFuture};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -135,6 +136,20 @@ fn main() {
         image.clone(),
         host_buffer.clone(),
     );
+
+    // Create command buffer object from builder
+    let command_buffer = builder.build()
+        .expect("Should be able to create command buffer out of builder object");
+
+    // Create future object to manage/oversee execution of pipeline
+    let future = sync::now(device.clone())
+        .then_execute(queue.clone(), command_buffer)
+        .expect("Should be able to submit commands in command buffer for execution")
+        .then_signal_fence_and_flush()
+        .expect("Should be able to ask for fence that signals execution completion on GPU");
+
+    // Wait for "fence"/signal from GPU and block CPU until it's received
+    future.wait(None).expect("Should be able to wait for 'fence' from GPU");
 }
 
 fn setup_instance() -> Arc<Instance> {
