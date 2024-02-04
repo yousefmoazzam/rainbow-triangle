@@ -292,6 +292,8 @@ fn configure_command_buffer_builder(
         .expect("Should be able to bind graphics pipeline object")
         .bind_vertex_buffers(0, vertex_buffer)
         .expect("Should be able to bind single vertex buffer")
+        .draw(3, 1, 0, 0)
+        .expect("Should be able to draw vertices")
         .end_render_pass(SubpassEndInfo::default())
         .expect("Should be able to configure end of render pass")
         .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(input_image, output_buffer))
