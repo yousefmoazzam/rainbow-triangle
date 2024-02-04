@@ -8,7 +8,7 @@ use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, Standar
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::image::view::ImageView;
 use vulkano::format::Format;
-use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage};
+use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::command_buffer::allocator::{
@@ -87,10 +87,6 @@ fn main() {
         CommandBufferUsage::OneTimeSubmit,
     ).expect("Should have been able to create command buffer builder");
 
-    // Record commands to builder
-    let colour: [f32; 4] = [0.80, 0.97, 1.00, 1.00];
-    configure_command_buffer_builder(&mut builder, colour, framebuffer);
-
     // Create shader module objects
     let vertex_shader = vertex_shaders::load(device.clone())
         .expect("Should be able to create shader module for vertex shader");
@@ -111,6 +107,16 @@ fn main() {
         fragment_shader.clone(),
         render_pass.clone(),
         viewport.into(),
+    );
+
+    // Record commands to builder
+    let colour: [f32; 4] = [0.80, 0.97, 1.00, 1.00];
+    configure_command_buffer_builder(
+        &mut builder,
+        colour,
+        framebuffer,
+        vertex_buffer.clone(),
+        graphics_pipeline.clone(),
     );
 }
 
@@ -224,6 +230,8 @@ fn configure_command_buffer_builder(
     builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     colour: [f32; 4],
     framebuffer: Arc<Framebuffer>,
+    vertex_buffer: Subbuffer<[MyVertex]>,
+    graphics_pipeline: Arc<GraphicsPipeline>,
 ) {
     builder
         .begin_render_pass(
@@ -237,6 +245,10 @@ fn configure_command_buffer_builder(
             },
         )
         .expect("Should be able to configure image clearing in render pass")
+        .bind_pipeline_graphics(graphics_pipeline)
+        .expect("Should be able to bind graphics pipeline object")
+        .bind_vertex_buffers(0, vertex_buffer)
+        .expect("Should be able to bind single vertex buffer")
         .end_render_pass(SubpassEndInfo::default())
         .expect("Should be able to configure end of render pass");
 }
