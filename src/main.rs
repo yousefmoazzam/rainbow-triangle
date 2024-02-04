@@ -15,7 +15,7 @@ use vulkano::command_buffer::allocator::{
     StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
 };
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
+    AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo, PrimaryAutoCommandBuffer,
     RenderPassBeginInfo, SubpassBeginInfo, SubpassContents, SubpassEndInfo,
 };
 use vulkano::shader::ShaderModule;
@@ -109,6 +109,21 @@ fn main() {
         viewport.into(),
     );
 
+    // Create buffer to store the drawn image on the CPU/host
+    let host_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
+            ..Default::default()
+        },
+        (0..height * width * 4).map(|_| 0u8),
+    ).expect("Should be able to create buffer on host to hold drawn image");
+
     // Record commands to builder
     let colour: [f32; 4] = [0.80, 0.97, 1.00, 1.00];
     configure_command_buffer_builder(
@@ -117,6 +132,8 @@ fn main() {
         framebuffer,
         vertex_buffer.clone(),
         graphics_pipeline.clone(),
+        image.clone(),
+        host_buffer.clone(),
     );
 }
 
@@ -180,7 +197,7 @@ fn create_image(
             image_type: ImageType::Dim2d,
             format: Format::R8G8B8A8_UNORM,
             extent: [height, width, 1],
-            usage: ImageUsage::COLOR_ATTACHMENT,
+            usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
             ..Default::default()
         },
         AllocationCreateInfo {
@@ -232,6 +249,8 @@ fn configure_command_buffer_builder(
     framebuffer: Arc<Framebuffer>,
     vertex_buffer: Subbuffer<[MyVertex]>,
     graphics_pipeline: Arc<GraphicsPipeline>,
+    input_image: Arc<Image>,
+    output_buffer: Subbuffer<[u8]>,
 ) {
     builder
         .begin_render_pass(
@@ -250,7 +269,9 @@ fn configure_command_buffer_builder(
         .bind_vertex_buffers(0, vertex_buffer)
         .expect("Should be able to bind single vertex buffer")
         .end_render_pass(SubpassEndInfo::default())
-        .expect("Should be able to configure end of render pass");
+        .expect("Should be able to configure end of render pass")
+        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(input_image, output_buffer))
+        .expect("Should be able to copy drawn image to output buffer");
 }
 
 fn create_graphics_pipeline(
