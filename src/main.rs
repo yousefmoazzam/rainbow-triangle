@@ -36,6 +36,8 @@ use image::{ImageBuffer, Rgba};
 struct MyVertex {
     #[format(R32G32_SFLOAT)]
     position: [f32; 2],
+    #[format(R32G32B32_SFLOAT)]
+    colour: [f32; 3],
 }
 
 fn main() {
@@ -52,9 +54,9 @@ fn main() {
     let image = create_image(memory_allocator.clone(), height, width);
 
     // Create vertices of single triangle
-    let vertex1 = MyVertex { position: [0.0, -0.5] };
-    let vertex2 = MyVertex { position: [0.5, 0.5] };
-    let vertex3 = MyVertex { position: [-0.5, 0.5] };
+    let vertex1 = MyVertex { position: [0.0, -0.5], colour: [1.0, 0.0, 0.0] };
+    let vertex2 = MyVertex { position: [0.5, 0.5], colour: [0.0, 1.0, 0.0] };
+    let vertex3 = MyVertex { position: [-0.5, 0.5], colour: [0.0, 0.0, 1.0] };
 
     // Create vertex buffer and put the triangle vertices in it
     let vertex_buffer = Buffer::from_iter(
@@ -369,9 +371,13 @@ mod vertex_shaders {
             #version 460
 
             layout(location = 0) in vec2 position;
+            layout(location = 1) in vec3 colour;
+
+            layout(location = 0) out vec3 fragColour;
 
             void main() {
                 gl_Position = vec4(position, 0.0, 1.0);
+                fragColour = colour;
             }
         ",
     }
@@ -383,10 +389,11 @@ mod fragment_shaders {
         src: r"
             #version 460
 
-            layout(location = 0) out vec4 f_color;
+            layout(location = 0) in vec3 fragColour;
+            layout(location = 0) out vec4 outColour;
 
             void main() {
-                f_color = vec4(0.0, 0.0, 1.0, 1.0);
+                outColour = vec4(fragColour, 1.0);
             }
         ",
     }
