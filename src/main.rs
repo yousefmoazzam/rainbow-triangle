@@ -221,7 +221,7 @@ fn create_image(
         allocator,
         ImageCreateInfo {
             image_type: ImageType::Dim2d,
-            format: Format::R8G8B8A8_UNORM,
+            format: Format::R8G8B8A8_SRGB,
             extent: [height, width, 1],
             usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
             ..Default::default()
@@ -239,7 +239,7 @@ fn create_render_pass(device: Arc<Device>) -> Arc<RenderPass> {
         device,
         attachments: {
             color: {
-                format: Format::R8G8B8A8_UNORM,
+                format: Format::R8G8B8A8_SRGB,
                 samples: 1,
                 load_op: Clear,
                 store_op: Store,
