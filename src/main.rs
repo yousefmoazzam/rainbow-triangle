@@ -234,7 +234,7 @@ fn create_image(
 
 fn create_render_pass(device: Arc<Device>) -> Arc<RenderPass> {
     let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
+        device,
         attachments: {
             color: {
                 format: Format::R8G8B8A8_UNORM,
