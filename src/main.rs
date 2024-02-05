@@ -186,7 +186,7 @@ fn get_logical_device(
         })
         .expect("Couldn't find a graphical queue family") as u32;
 
-    let (device, mut queues) = Device::new(
+    let (device, queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
             queue_create_infos: vec![
