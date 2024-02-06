@@ -96,30 +96,14 @@ fn main() {
         StandardCommandBufferAllocatorCreateInfo::default(),
     );
 
-    // Create command buffer for containing only the copy command from staging buffer to
-    // device-local vertex buffer
-    let mut copy_command_buffer_builder = AutoCommandBufferBuilder::primary(
+    // Copy vertex data from staging buffer to device-local buffer
+    copy_from_staging_to_device(
+        device.clone(),
+        queue.clone(),
         &command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    ).expect("Should be able to create command buffer for copy command");
-
-    // Configure command buffer builder Copy contents of staging buffer to vertex buffer residing
-    // in "device-local" memory
-    copy_command_buffer_builder
-        .copy_buffer(CopyBufferInfo::buffers(staging_buffer.clone(), vertex_buffer.clone()))
-        .expect("Should be able to record copy command");
-
-    let copy_command_buffer = copy_command_buffer_builder.build()
-        .expect("Should be able to build command buffer for copying");
-
-    let copy_future = sync::now(device.clone())
-        .then_execute(queue.clone(), copy_command_buffer)
-        .expect("Should be able to submit command buffer w/ copy command")
-        .then_signal_fence_and_flush()
-        .expect("Should be able to ask for fence for when copy command has completed");
-
-    copy_future.wait(None).expect("Should be able to wait for fence from future");
+        staging_buffer.clone(),
+        vertex_buffer.clone(),
+    );
 
     // Create render pass object configured to clear a single image
     let render_pass = create_render_pass(device.clone());
@@ -404,6 +388,35 @@ fn create_graphics_pipeline(
     ).expect("Should be able to create graphics pipeline object");
 
     graphics_pipeline
+}
+
+fn copy_from_staging_to_device<T>(
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    allocator: &StandardCommandBufferAllocator,
+    staging_buffer: Subbuffer<[T]>,
+    device_buffer: Subbuffer<[T]>,
+) {
+    let mut builder = AutoCommandBufferBuilder::primary(
+        allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    ).expect("Should be able to create command buffer for copy command");
+
+    builder
+        .copy_buffer(CopyBufferInfo::buffers(staging_buffer, device_buffer))
+        .expect("Should be able to record copy command");
+
+    let command_buffer = builder.build()
+        .expect("Should be able to build command buffer for copying");
+
+    let future = sync::now(device.clone())
+        .then_execute(queue, command_buffer)
+        .expect("Should be able to submit command buffer w/ copy command")
+        .then_signal_fence_and_flush()
+        .expect("Should be able to ask for fence for when copy command has completed");
+
+    future.wait(None).expect("Should be able to wait for fence from future");
 }
 
 mod vertex_shaders {
