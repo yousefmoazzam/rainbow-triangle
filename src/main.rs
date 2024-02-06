@@ -15,8 +15,9 @@ use vulkano::command_buffer::allocator::{
     StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
 };
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo, PrimaryAutoCommandBuffer,
-    RenderPassBeginInfo, SubpassBeginInfo, SubpassContents, SubpassEndInfo,
+    AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, CopyImageToBufferInfo,
+    PrimaryAutoCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
+    SubpassEndInfo,
 };
 use vulkano::shader::ShaderModule;
 use vulkano::pipeline::{GraphicsPipeline, PipelineShaderStageCreateInfo, PipelineLayout};
@@ -58,32 +59,73 @@ fn main() {
     let vertex2 = MyVertex { position: [0.5, 0.5], colour: [0.0, 1.0, 0.0] };
     let vertex3 = MyVertex { position: [-0.5, 0.5], colour: [0.0, 0.0, 1.0] };
 
-    // Create vertex buffer and put the triangle vertices in it
-    let vertex_buffer = Buffer::from_iter(
+    // Create buffer on host to hold vertex data purely for transferring to "device-local" GPU
+    // memory (called a "staging buffer")
+    let staging_buffer = Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
-            usage: BufferUsage::VERTEX_BUFFER,
+            usage: BufferUsage::TRANSFER_SRC,
             ..Default::default()
         },
         AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
         vec![vertex1, vertex2, vertex3],
+    ).expect("Should have been able to create staging buffer");
+
+    // Create vertex buffer in "device-local" memory which will be the copy destination of the
+    // three triangle vertices
+    let vertex_buffer = Buffer::new_slice::<MyVertex>(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+            ..Default::default()
+        },
+        3,
     ).expect("Should have been able to create vertex buffer");
-
-    // Create render pass object configured to clear a single image
-    let render_pass = create_render_pass(device.clone());
-
-    // Create framebuffer that contains the single image
-    let framebuffer = wrap_image_in_framebuffer(image.clone(), render_pass.clone());
 
     // Create command buffer allocator
     let command_buffer_allocator = StandardCommandBufferAllocator::new(
         device.clone(),
         StandardCommandBufferAllocatorCreateInfo::default(),
     );
+
+    // Create command buffer for containing only the copy command from staging buffer to
+    // device-local vertex buffer
+    let mut copy_command_buffer_builder = AutoCommandBufferBuilder::primary(
+        &command_buffer_allocator,
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+    ).expect("Should be able to create command buffer for copy command");
+
+    // Configure command buffer builder Copy contents of staging buffer to vertex buffer residing
+    // in "device-local" memory
+    copy_command_buffer_builder
+        .copy_buffer(CopyBufferInfo::buffers(staging_buffer.clone(), vertex_buffer.clone()))
+        .expect("Should be able to record copy command");
+
+    let copy_command_buffer = copy_command_buffer_builder.build()
+        .expect("Should be able to build command buffer for copying");
+
+    let copy_future = sync::now(device.clone())
+        .then_execute(queue.clone(), copy_command_buffer)
+        .expect("Should be able to submit command buffer w/ copy command")
+        .then_signal_fence_and_flush()
+        .expect("Should be able to ask for fence for when copy command has completed");
+
+    copy_future.wait(None).expect("Should be able to wait for fence from future");
+
+    // Create render pass object configured to clear a single image
+    let render_pass = create_render_pass(device.clone());
+
+    // Create framebuffer that contains the single image
+    let framebuffer = wrap_image_in_framebuffer(image.clone(), render_pass.clone());
 
     // Create command buffer builder
     let mut builder = AutoCommandBufferBuilder::primary(
