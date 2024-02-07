@@ -29,8 +29,13 @@ use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
 use vulkano::sync::{self, GpuFuture};
+use vulkano::swapchain::Surface;
+use vulkano::instance::InstanceExtensions;
 
 use image::{ImageBuffer, Rgba};
+
+use winit::event_loop::EventLoop;
+use winit::window::WindowBuilder;
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -43,7 +48,15 @@ struct MyVertex {
 
 fn main() {
     // Setup
-    let instance = setup_instance();
+    let event_loop = EventLoop::new();
+    let required_extensions = Surface::required_extensions(&event_loop);
+    let instance = setup_instance(required_extensions);
+    let window = Arc::new(
+        WindowBuilder::new().build(&event_loop)
+            .expect("Should be able to create window object")
+    );
+    let surface = Surface::from_window(instance.clone(), window.clone())
+        .expect("Should be able to create surface from window");
     let physical_device = get_physical_device(instance);
     let (device, queues) = get_logical_device(physical_device);
     let queue = get_queue(queues);
@@ -229,10 +242,15 @@ fn main() {
     drawn_image.save("square.png").expect("Unable to save png image");
 }
 
-fn setup_instance() -> Arc<Instance> {
+fn setup_instance(extensions: InstanceExtensions) -> Arc<Instance> {
     let library = VulkanLibrary::new().expect("No Vulkan library installed");
-    let instance = Instance::new(library, InstanceCreateInfo::default())
-        .expect("Failed to create Vulkan instance");
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            enabled_extensions: extensions,
+            ..Default::default()
+        },
+    ).expect("Failed to create Vulkan instance");
     instance
 }
 
