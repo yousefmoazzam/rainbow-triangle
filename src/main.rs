@@ -55,9 +55,10 @@ fn main() {
     let image = create_image(memory_allocator.clone(), height, width);
 
     // Create vertices of single triangle
-    let vertex1 = MyVertex { position: [0.0, -0.5], colour: [1.0, 0.0, 0.0] };
-    let vertex2 = MyVertex { position: [0.5, 0.5], colour: [0.0, 1.0, 0.0] };
-    let vertex3 = MyVertex { position: [-0.5, 0.5], colour: [0.0, 0.0, 1.0] };
+    let vertex1 = MyVertex { position: [-0.5, -0.5], colour: [1.0, 0.0, 0.0] };
+    let vertex2 = MyVertex { position: [0.5, -0.5], colour: [0.0, 1.0, 0.0] };
+    let vertex3 = MyVertex { position: [0.5, 0.5], colour: [0.0, 0.0, 1.0] };
+    let vertex4 = MyVertex { position: [-0.5, 0.5], colour: [1.0, 1.0, 1.0] };
 
     // Create buffer on host to hold vertex data purely for transferring to "device-local" GPU
     // memory (called a "staging buffer")
@@ -72,7 +73,7 @@ fn main() {
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
-        vec![vertex1, vertex2, vertex3],
+        vec![vertex1, vertex2, vertex3, vertex4],
     ).expect("Should have been able to create staging buffer");
 
     // Create vertex buffer in "device-local" memory which will be the copy destination of the
@@ -87,8 +88,37 @@ fn main() {
             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
             ..Default::default()
         },
-        3,
+        4,
     ).expect("Should have been able to create vertex buffer");
+
+    // Create staging buffer to hold indices for index buffer
+    let index_staging_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::TRANSFER_SRC,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        vec![0u16, 1, 2, 2, 3, 0],
+    ).expect("Should be able to create staging buffer for indices");
+
+    // Create device-local buffer as copy destination for the indices
+    let index_buffer = Buffer::new_slice::<u16>(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::INDEX_BUFFER | BufferUsage::TRANSFER_DST,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+            ..Default::default()
+        },
+        6,
+    ).expect("Should be able to create index buffer");
 
     // Create command buffer allocator
     let command_buffer_allocator = StandardCommandBufferAllocator::new(
@@ -103,6 +133,15 @@ fn main() {
         &command_buffer_allocator,
         staging_buffer.clone(),
         vertex_buffer.clone(),
+    );
+
+    // Copy indices data from staging buffer to device-local buffer
+    copy_from_staging_to_device(
+        device.clone(),
+        queue.clone(),
+        &command_buffer_allocator,
+        index_staging_buffer.clone(),
+        index_buffer.clone(),
     );
 
     // Create render pass object configured to clear a single image
@@ -162,6 +201,7 @@ fn main() {
         colour,
         framebuffer,
         vertex_buffer.clone(),
+        index_buffer.clone(),
         graphics_pipeline.clone(),
         image.clone(),
         host_buffer.clone(),
@@ -186,7 +226,7 @@ fn main() {
         .expect("Should be able to read contents of host buffer");
     let drawn_image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, &buffer_content[..])
         .expect("Should be able to create an image object from the host buffer");
-    drawn_image.save("triangle.png").expect("Unable to save png image");
+    drawn_image.save("square.png").expect("Unable to save png image");
 }
 
 fn setup_instance() -> Arc<Instance> {
@@ -300,6 +340,7 @@ fn configure_command_buffer_builder(
     colour: [f32; 4],
     framebuffer: Arc<Framebuffer>,
     vertex_buffer: Subbuffer<[MyVertex]>,
+    index_buffer: Subbuffer<[u16]>,
     graphics_pipeline: Arc<GraphicsPipeline>,
     input_image: Arc<Image>,
     output_buffer: Subbuffer<[u8]>,
@@ -320,7 +361,9 @@ fn configure_command_buffer_builder(
         .expect("Should be able to bind graphics pipeline object")
         .bind_vertex_buffers(0, vertex_buffer)
         .expect("Should be able to bind single vertex buffer")
-        .draw(3, 1, 0, 0)
+        .bind_index_buffer(index_buffer)
+        .expect("Should be able to bind index buffer")
+        .draw_indexed(6, 1, 0, 0, 0)
         .expect("Should be able to draw vertices")
         .end_render_pass(SubpassEndInfo::default())
         .expect("Should be able to configure end of render pass")
