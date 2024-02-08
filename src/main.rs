@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use vulkano::VulkanLibrary;
 use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags};
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::{
+    Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
+};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::image::view::ImageView;
@@ -57,7 +59,15 @@ fn main() {
     );
     let surface = Surface::from_window(instance.clone(), window.clone())
         .expect("Should be able to create surface from window");
-    let physical_device = get_physical_device(instance);
+    let device_extensions = DeviceExtensions {
+        khr_swapchain: true,
+        ..DeviceExtensions::empty()
+    };
+    let (physical_device, queue_family_index) = get_physical_device(
+        instance,
+        &device_extensions,
+        &surface,
+    );
     let (device, queues) = get_logical_device(physical_device);
     let queue = get_queue(queues);
     let memory_allocator = create_memory_allocator(device.clone());
@@ -254,11 +264,32 @@ fn setup_instance(extensions: InstanceExtensions) -> Arc<Instance> {
     instance
 }
 
-fn get_physical_device(instance: Arc<Instance>) -> Arc<PhysicalDevice> {
-    let mut physical_devices = instance.enumerate_physical_devices()
-        .expect("Couldn't find any physical devices");
-    let physical_device = physical_devices.next().expect("No device found");
-    physical_device
+fn get_physical_device(
+    instance: Arc<Instance>,
+    extensions: &DeviceExtensions,
+    surface: &Surface,
+) -> (Arc<PhysicalDevice>, u32) {
+    instance.enumerate_physical_devices()
+        .expect("Couldn't find any physical devices")
+        .filter(|d| d.supported_extensions().contains(extensions))
+        .filter_map(|d| {
+            d.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    q.queue_flags.contains(QueueFlags::GRAPHICS)
+                        && d.surface_support(i as u32, surface).unwrap_or(false)
+                })
+                .map(|q| (d, q as u32))
+        })
+        .min_by_key(|(d, _)| match d.properties().device_type {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            _ => 4,
+        })
+        .expect("Unable to find suitable device")
 }
 
 fn get_logical_device(
