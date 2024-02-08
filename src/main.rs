@@ -68,7 +68,11 @@ fn main() {
         &device_extensions,
         &surface,
     );
-    let (device, queues) = get_logical_device(physical_device);
+    let (device, queues) = get_logical_device(
+        physical_device.clone(),
+        queue_family_index,
+        device_extensions,
+    );
     let queue = get_queue(queues);
     let memory_allocator = create_memory_allocator(device.clone());
 
@@ -294,21 +298,16 @@ fn get_physical_device(
 
 fn get_logical_device(
     physical_device: Arc<PhysicalDevice>,
+    queue_family_index: u32,
+    extensions: DeviceExtensions,
 ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
-    let queue_family_index = physical_device
-        .queue_family_properties()
-        .iter()
-        .position(|queue_family_properties| {
-            queue_family_properties.queue_flags.contains(QueueFlags::GRAPHICS)
-        })
-        .expect("Couldn't find a graphical queue family") as u32;
-
     let (device, queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
             queue_create_infos: vec![
                 QueueCreateInfo { queue_family_index, ..Default::default() },
             ],
+            enabled_extensions: extensions,
             ..Default::default()
         },
     ).expect("Unable to create logical device from physical device");
