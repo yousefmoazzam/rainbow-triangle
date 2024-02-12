@@ -31,13 +31,13 @@ use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
 use vulkano::sync::{self, GpuFuture};
-use vulkano::swapchain::Surface;
+use vulkano::swapchain::{ColorSpace, Surface, Swapchain, SwapchainCreateInfo};
 use vulkano::instance::InstanceExtensions;
 
 use image::{ImageBuffer, Rgba};
 
 use winit::event_loop::EventLoop;
-use winit::window::WindowBuilder;
+use winit::window::{Window, WindowBuilder};
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
@@ -75,6 +75,14 @@ fn main() {
     );
     let queue = get_queue(queues);
     let memory_allocator = create_memory_allocator(device.clone());
+
+    // Create swapchain
+    let (mut swapchain, images) = create_swapchain(
+        physical_device.clone(),
+        device.clone(),
+        surface.clone(),
+        window.clone(),
+    );
 
     // Image creation
     let height = 1024;
@@ -508,6 +516,53 @@ fn copy_from_staging_to_device<T>(
         .expect("Should be able to ask for fence for when copy command has completed");
 
     future.wait(None).expect("Should be able to wait for fence from future");
+}
+
+fn create_swapchain(
+    physical_device: Arc<PhysicalDevice>,
+    logical_device: Arc<Device>,
+    surface: Arc<Surface>,
+    window: Arc<Window>,
+) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
+    let dimensions = window.inner_size();
+
+    let caps = physical_device
+        .surface_capabilities(&surface, Default::default())
+        .expect("Should be able to get capabilities of surface");
+    let composite_alpha = caps
+        .supported_composite_alpha
+        .into_iter()
+        .next()
+        .expect("Should be able to get a 'composite alpha mode'");
+
+    let (image_format, image_colour_space) = physical_device
+            .surface_formats(&surface, Default::default())
+            .expect("Should be able to get formats of surface the physical device supports")
+            .into_iter()
+            .min_by_key(|(_, colour_space)| match colour_space {
+                ColorSpace::SrgbNonLinear => 0,
+                _ => 1,
+            })
+            .expect("Should be able to pick a format + colour space for swapchain images");
+
+    let mut image_count = caps.min_image_count + 1;
+    if let Some(val) = caps.max_image_count {
+        image_count = val;
+    }
+
+    Swapchain::new(
+        logical_device,
+        surface,
+        SwapchainCreateInfo {
+            min_image_count: image_count,
+            image_format: image_format,
+            image_extent: dimensions.into(),
+            image_color_space: image_colour_space,
+            image_usage: ImageUsage::COLOR_ATTACHMENT,
+            composite_alpha: composite_alpha,
+            ..Default::default()
+        },
+    ).expect("Should be able to create swapchain")
 }
 
 mod vertex_shaders {
