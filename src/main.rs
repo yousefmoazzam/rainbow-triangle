@@ -7,9 +7,8 @@ use vulkano::device::{
     Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
 };
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
-use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::image::{Image, ImageUsage};
 use vulkano::image::view::ImageView;
-use vulkano::format::Format;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
@@ -17,9 +16,8 @@ use vulkano::command_buffer::allocator::{
     StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
 };
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, CopyImageToBufferInfo,
-    PrimaryAutoCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
-    SubpassEndInfo,
+    AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer,
+    RenderPassBeginInfo, SubpassBeginInfo, SubpassContents, SubpassEndInfo,
 };
 use vulkano::shader::ShaderModule;
 use vulkano::pipeline::{GraphicsPipeline, PipelineShaderStageCreateInfo, PipelineLayout};
@@ -33,8 +31,6 @@ use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttach
 use vulkano::sync::{self, GpuFuture};
 use vulkano::swapchain::{ColorSpace, Surface, Swapchain, SwapchainCreateInfo};
 use vulkano::instance::InstanceExtensions;
-
-use image::{ImageBuffer, Rgba};
 
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
@@ -83,11 +79,6 @@ fn main() {
         surface.clone(),
         window.clone(),
     );
-
-    // Image creation
-    let height = 1024;
-    let width = 1024;
-    let image = create_image(memory_allocator.clone(), height, width);
 
     // Create vertices of single triangle
     let vertex1 = MyVertex { position: [-0.5, -0.5], colour: [1.0, 0.0, 0.0] };
@@ -180,17 +171,10 @@ fn main() {
     );
 
     // Create render pass object configured to clear a single image
-    let render_pass = create_render_pass(device.clone());
+    let render_pass = create_render_pass(device.clone(), swapchain.clone());
 
-    // Create framebuffer that contains the single image
-    let framebuffer = wrap_image_in_framebuffer(image.clone(), render_pass.clone());
-
-    // Create command buffer builder
-    let mut builder = AutoCommandBufferBuilder::primary(
-        &command_buffer_allocator,
-        queue.queue_family_index(),
-        CommandBufferUsage::OneTimeSubmit,
-    ).expect("Should have been able to create command buffer builder");
+    // Create a framebuffer for each image in the swapchain
+    let framebuffers = create_framebuffers(images.clone(), render_pass.clone());
 
     // Create shader module objects
     let vertex_shader = vertex_shaders::load(device.clone())
@@ -201,7 +185,7 @@ fn main() {
     // Create viewport
     let viewport = Viewport {
         offset: [0.0, 0.0],
-        extent: [height as f32, width as f32],
+        extent: window.inner_size().into(),
         depth_range: 0.0..=1.0,
     };
 
@@ -214,54 +198,19 @@ fn main() {
         viewport.into(),
     );
 
-    // Create buffer to store the drawn image on the CPU/host
-    let host_buffer = Buffer::from_iter(
-        memory_allocator.clone(),
-        BufferCreateInfo {
-            usage: BufferUsage::TRANSFER_DST,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                | MemoryTypeFilter::HOST_RANDOM_ACCESS,
-            ..Default::default()
-        },
-        (0..height * width * 4).map(|_| 0u8),
-    ).expect("Should be able to create buffer on host to hold drawn image");
-
     // Record commands to builder
     let colour: [f32; 4] = [0.80, 0.97, 1.00, 1.00];
-    configure_command_buffer_builder(
-        &mut builder,
+
+    // Create command buffer, one associated with each framebuffer
+    let command_buffers = create_command_buffers(
+        &command_buffer_allocator,
+        queue.queue_family_index(),
         colour,
-        framebuffer,
+        framebuffers.clone(),
         vertex_buffer.clone(),
         index_buffer.clone(),
         graphics_pipeline.clone(),
-        image.clone(),
-        host_buffer.clone(),
     );
-
-    // Create command buffer object from builder
-    let command_buffer = builder.build()
-        .expect("Should be able to create command buffer out of builder object");
-
-    // Create future object to manage/oversee execution of pipeline
-    let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
-        .expect("Should be able to submit commands in command buffer for execution")
-        .then_signal_fence_and_flush()
-        .expect("Should be able to ask for fence that signals execution completion on GPU");
-
-    // Wait for "fence"/signal from GPU and block CPU until it's received
-    future.wait(None).expect("Should be able to wait for 'fence' from GPU");
-
-    // Save image in png file
-    let buffer_content = host_buffer.read()
-        .expect("Should be able to read contents of host buffer");
-    let drawn_image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, &buffer_content[..])
-        .expect("Should be able to create an image object from the host buffer");
-    drawn_image.save("square.png").expect("Unable to save png image");
 }
 
 fn setup_instance(extensions: InstanceExtensions) -> Arc<Instance> {
@@ -334,34 +283,12 @@ fn create_memory_allocator(device: Arc<Device>) -> Arc<StandardMemoryAllocator> 
     allocator
 }
 
-fn create_image(
-    allocator: Arc<StandardMemoryAllocator>,
-    height: u32,
-    width: u32,
-) -> Arc<Image> {
-    let image = Image::new(
-        allocator,
-        ImageCreateInfo {
-            image_type: ImageType::Dim2d,
-            format: Format::R8G8B8A8_SRGB,
-            extent: [height, width, 1],
-            usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_SRC,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-            ..Default::default()
-        },
-    ).expect("Should've been able to create a single 2D image");
-    image
-}
-
-fn create_render_pass(device: Arc<Device>) -> Arc<RenderPass> {
+fn create_render_pass(device: Arc<Device>, swapchain: Arc<Swapchain>) -> Arc<RenderPass> {
     let render_pass = vulkano::single_pass_renderpass!(
         device,
         attachments: {
             color: {
-                format: Format::R8G8B8A8_SRGB,
+                format: swapchain.image_format(),
                 samples: 1,
                 load_op: Clear,
                 store_op: Store,
@@ -375,56 +302,69 @@ fn create_render_pass(device: Arc<Device>) -> Arc<RenderPass> {
     render_pass
 }
 
-fn wrap_image_in_framebuffer(
-    image: Arc<Image>,
+fn create_framebuffers(
+    images: Vec<Arc<Image>>,
     render_pass: Arc<RenderPass>,
-) -> Arc<Framebuffer> {
-    let view = ImageView::new_default(image)
-        .expect("Should have been able to create an image view");
-    let framebuffer = Framebuffer::new(
-        render_pass,
-        FramebufferCreateInfo {
-            attachments: vec![view],
-            ..Default::default()
-        },
-    ).expect("Should have been able to create framebuffer");
-    framebuffer
+) -> Vec<Arc<Framebuffer>> {
+    images.iter().map(|image| {
+        Framebuffer::new(
+            render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![
+                    ImageView::new_default(image.clone())
+                        .expect("Should be able to wrap swapchain image in an image view")
+                ],
+                ..Default::default()
+            },
+        ).expect("Should be able to create framebuffer to contain single attachment")
+    }).collect()
 }
 
-fn configure_command_buffer_builder(
-    builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+fn create_command_buffers(
+    allocator: &StandardCommandBufferAllocator,
+    queue_family_index: u32,
     colour: [f32; 4],
-    framebuffer: Arc<Framebuffer>,
+    framebuffers: Vec<Arc<Framebuffer>>,
     vertex_buffer: Subbuffer<[MyVertex]>,
     index_buffer: Subbuffer<[u16]>,
     graphics_pipeline: Arc<GraphicsPipeline>,
-    input_image: Arc<Image>,
-    output_buffer: Subbuffer<[u8]>,
-) {
-    builder
-        .begin_render_pass(
-            RenderPassBeginInfo {
-                clear_values: vec![Some(colour.into())],
-                ..RenderPassBeginInfo::framebuffer(framebuffer)
-            },
-            SubpassBeginInfo {
-                contents: SubpassContents::Inline,
-                ..Default::default()
-            },
-        )
-        .expect("Should be able to configure image clearing in render pass")
-        .bind_pipeline_graphics(graphics_pipeline)
-        .expect("Should be able to bind graphics pipeline object")
-        .bind_vertex_buffers(0, vertex_buffer)
-        .expect("Should be able to bind single vertex buffer")
-        .bind_index_buffer(index_buffer)
-        .expect("Should be able to bind index buffer")
-        .draw_indexed(6, 1, 0, 0, 0)
-        .expect("Should be able to draw vertices")
-        .end_render_pass(SubpassEndInfo::default())
-        .expect("Should be able to configure end of render pass")
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(input_image, output_buffer))
-        .expect("Should be able to copy drawn image to output buffer");
+) -> Vec<Arc<PrimaryAutoCommandBuffer>> {
+    framebuffers
+        .iter()
+        .map(|framebuffer| {
+            let mut builder = AutoCommandBufferBuilder::primary(
+                allocator,
+                queue_family_index,
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .expect("Should have been able to create command buffer builder");
+
+            builder
+                .begin_render_pass(
+                    RenderPassBeginInfo {
+                        clear_values: vec![Some(colour.into())],
+                        ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+                    },
+                    SubpassBeginInfo {
+                        contents: SubpassContents::Inline,
+                        ..Default::default()
+                    },
+                )
+                .expect("Should be able to configure image clearing in render pass")
+                .bind_pipeline_graphics(graphics_pipeline.clone())
+                .expect("Should be able to bind graphics pipeline object")
+                .bind_vertex_buffers(0, vertex_buffer.clone())
+                .expect("Should be able to bind single vertex buffer")
+                .bind_index_buffer(index_buffer.clone())
+                .expect("Should be able to bind index buffer")
+                .draw_indexed(6, 1, 0, 0, 0)
+                .expect("Should be able to draw vertices")
+                .end_render_pass(SubpassEndInfo::default())
+                .expect("Should be able to configure end of render pass");
+
+            builder.build().expect("Should be able to build command buffer from builder")
+        })
+        .collect()
 }
 
 fn create_graphics_pipeline(
