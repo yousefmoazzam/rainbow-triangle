@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use vulkano::VulkanLibrary;
+use vulkano::{Validated, VulkanLibrary};
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{
@@ -29,7 +29,10 @@ use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
 use vulkano::sync::{self, GpuFuture};
-use vulkano::swapchain::{ColorSpace, Surface, Swapchain, SwapchainCreateInfo};
+use vulkano::swapchain::{
+    acquire_next_image, ColorSpace, Surface, Swapchain, SwapchainCreateInfo,
+    SwapchainPresentInfo,
+};
 use vulkano::instance::InstanceExtensions;
 
 use winit::event::{Event, WindowEvent};
@@ -214,7 +217,7 @@ fn main() {
     );
 
     // Create event loop which produces the window that Vulkan can use to display frames
-    event_loop.run(|event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -222,7 +225,14 @@ fn main() {
             } => {
                 *control_flow = ControlFlow::Exit;
             },
-            _ => ()
+            _ => {
+                draw_frame(
+                    swapchain.clone(),
+                    device.clone(),
+                    queue.clone(),
+                    &command_buffers,
+                );
+            }
         }
     });
 }
@@ -517,6 +527,42 @@ fn create_swapchain(
             ..Default::default()
         },
     ).expect("Should be able to create swapchain")
+}
+
+fn draw_frame(
+    swapchain: Arc<Swapchain>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    command_buffers: &Vec<Arc<PrimaryAutoCommandBuffer>>,
+) {
+    let (image_idx, _, image_acquire_future) =
+        match acquire_next_image(swapchain.clone(), None)
+            .map_err(Validated::unwrap)
+        {
+            Ok(r) => r,
+            Err(e) => panic!("Failed to acquire next image from swapchain: {e}"),
+
+        };
+
+    let execution = sync::now(device)
+        .join(image_acquire_future)
+        .then_execute(queue.clone(), command_buffers[image_idx as usize].clone())
+        .expect("Should be able to provide command buffer to future")
+        .then_swapchain_present(
+            queue.clone(),
+            SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_idx),
+        )
+        .then_signal_fence_and_flush();
+
+    match execution.map_err(Validated::unwrap) {
+        Ok(future) => {
+            future.wait(None)
+                .expect("Should be able to make future wait for GPU to finish execution");
+        },
+        Err(e) => {
+            println!("Failed to flush the future: {e}");
+        }
+    }
 }
 
 mod vertex_shaders {
