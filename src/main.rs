@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use vulkano::format::Format;
 use vulkano::{Validated, VulkanLibrary};
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
@@ -503,9 +504,17 @@ fn create_swapchain(
             .surface_formats(&surface, Default::default())
             .expect("Should be able to get formats of surface the physical device supports")
             .into_iter()
-            .min_by_key(|(_, colour_space)| match colour_space {
-                ColorSpace::SrgbNonLinear => 0,
-                _ => 1,
+            .min_by_key(|(format, colour_space)| {
+                let format_count = match format {
+                    Format::R8G8B8A8_SRGB => 0,
+                    Format::B8G8R8A8_SRGB => 0,
+                    _ => 1,
+                };
+                let space_count = match colour_space {
+                    ColorSpace::SrgbNonLinear => 0,
+                    _ => 1,
+                };
+                format_count + space_count
             })
             .expect("Should be able to pick a format + colour space for swapchain images");
 
