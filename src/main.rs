@@ -32,7 +32,8 @@ use vulkano::sync::{self, GpuFuture};
 use vulkano::swapchain::{ColorSpace, Surface, Swapchain, SwapchainCreateInfo};
 use vulkano::instance::InstanceExtensions;
 
-use winit::event_loop::EventLoop;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
 #[derive(BufferContents, Vertex)]
@@ -211,6 +212,19 @@ fn main() {
         index_buffer.clone(),
         graphics_pipeline.clone(),
     );
+
+    // Create event loop which produces the window that Vulkan can use to display frames
+    event_loop.run(|event, _, control_flow| {
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
+            },
+            _ => ()
+        }
+    });
 }
 
 fn setup_instance(extensions: InstanceExtensions) -> Arc<Instance> {
