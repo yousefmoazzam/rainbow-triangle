@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use vulkano::format::Format;
-use vulkano::{Validated, VulkanLibrary};
+use vulkano::{Validated, VulkanError, VulkanLibrary};
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{
@@ -188,7 +188,7 @@ fn main() {
         .expect("Should be able to create shader module for fragment shader");
 
     // Create viewport
-    let viewport = Viewport {
+    let mut viewport = Viewport {
         offset: [0.0, 0.0],
         extent: window.inner_size().into(),
         depth_range: 0.0..=1.0,
@@ -200,14 +200,14 @@ fn main() {
         vertex_shader.clone(),
         fragment_shader.clone(),
         render_pass.clone(),
-        viewport.into(),
+        viewport.clone(),
     );
 
     // Record commands to builder
     let colour: [f32; 4] = [0.80, 0.97, 1.00, 1.00];
 
     // Create command buffer, one associated with each framebuffer
-    let command_buffers = create_command_buffers(
+    let mut command_buffers = create_command_buffers(
         &command_buffer_allocator,
         queue.queue_family_index(),
         colour,
@@ -218,6 +218,8 @@ fn main() {
     );
 
     // Create event loop which produces the window that Vulkan can use to display frames
+    let mut window_resized = false;
+    let mut recreate_swapchain = false;
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -226,13 +228,57 @@ fn main() {
             } => {
                 *control_flow = ControlFlow::Exit;
             },
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+                window_resized = true;
+            },
             _ => {
-                draw_frame(
-                    swapchain.clone(),
-                    device.clone(),
-                    queue.clone(),
-                    &command_buffers,
-                );
+                if window_resized || recreate_swapchain {
+                    recreate_swapchain = false;
+
+                    // Must create a new variable to contain the new swapchian object, reassigning
+                    // the existing variable to the new swapchain object causes error
+                    let (new_swapchain, images) = swapchain
+                        .recreate(SwapchainCreateInfo {
+                            image_extent: window.inner_size().into(),
+                            ..swapchain.create_info()
+                        })
+                        .expect("Failed to recreate swapchain");
+                    swapchain = new_swapchain;
+
+                    let framebuffers = create_framebuffers(images, render_pass.clone());
+
+                    if window_resized {
+                        window_resized = false;
+                        viewport.extent = window.inner_size().into();
+                        let graphics_pipeline = create_graphics_pipeline(
+                            device.clone(),
+                            vertex_shader.clone(),
+                            fragment_shader.clone(),
+                            render_pass.clone(),
+                            viewport.clone(),
+                        );
+                        command_buffers = create_command_buffers(
+                            &command_buffer_allocator,
+                            queue.queue_family_index(),
+                            colour,
+                            framebuffers.clone(),
+                            vertex_buffer.clone(),
+                            index_buffer.clone(),
+                            graphics_pipeline.clone()
+                        );
+                        draw_frame(
+                            swapchain.clone(),
+                            device.clone(),
+                            queue.clone(),
+                            &command_buffers,
+                            &mut recreate_swapchain,
+                        );
+                    }
+                }
+
             }
         }
     });
@@ -543,12 +589,17 @@ fn draw_frame(
     device: Arc<Device>,
     queue: Arc<Queue>,
     command_buffers: &Vec<Arc<PrimaryAutoCommandBuffer>>,
+    recreate_swapchain: &mut bool,
 ) {
     let (image_idx, _, image_acquire_future) =
         match acquire_next_image(swapchain.clone(), None)
             .map_err(Validated::unwrap)
         {
             Ok(r) => r,
+            Err(VulkanError::OutOfDate) => {
+                *recreate_swapchain = true;
+                return;
+            }
             Err(e) => panic!("Failed to acquire next image from swapchain: {e}"),
 
         };
